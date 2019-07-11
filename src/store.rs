@@ -6,6 +6,7 @@ use crate::expense::Expense;
 
 pub trait Store {
     type Id;
+    fn all(&self) -> Vec<&Expense>;
     fn save(&mut self, expense: Expense) -> Self::Id;
     fn read(&self, id: &Self::Id) -> Option<&Expense>;
 }
@@ -33,6 +34,9 @@ impl MemoryStore {
 
 impl Store for MemoryStore {
     type Id = Id<Expense>;
+    fn all(&self) -> Vec<&Expense> {
+        self.events.values().collect()
+    }
     fn save(&mut self, expense: Expense) -> Self::Id {
         let id = Id::new();
         self.events.insert(id, expense);

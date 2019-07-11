@@ -5,4 +5,5 @@ authors = ["Y0hy0h <Y0hy0h@users.noreply.github.com>"]
 edition = "2018"
 
 [dependencies]
+chrono = "0.4.7"
 uuid = { version = "0.7", features = ["serde", "v4"] }
