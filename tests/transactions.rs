@@ -2,7 +2,7 @@ extern crate plusminus;
 use plusminus::{Date, Expense, MemoryStore, Store};
 
 #[test]
-fn transactions() {
+fn general() {
     let mut store = MemoryStore::empty();
 
     let expense1 = Expense {
@@ -19,7 +19,11 @@ fn transactions() {
     let id2 = store.add(expense2);
     assert_eq!(&expense2, store.read(id2));
 
+    let all = store.index();
+
     // Chronological order expected.
     let expected = vec![&expense2, &expense1];
-    itertools::assert_equal(expected, store.index());
+    itertools::assert_equal(expected, all.iter());
+
+    assert_eq!(3250, all.sum())
 }

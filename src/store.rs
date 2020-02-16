@@ -1,18 +1,30 @@
 use slotmap::SlotMap;
 
-use crate::expense::Expense;
+use crate::expense::{Currency, Expense};
 
 pub trait Store<'a> {
     type Id: Copy;
-    type Cursor: IntoIterator<Item = &'a Expense>;
 
     /// Returns an iterator over all stored `Expense`s
     /// in reverse chronological order.
-    fn index(&'a self) -> Self::Cursor;
+    fn index(&'a self) -> Cursor<'a>;
 
     fn add(&mut self, expense: Expense) -> Self::Id;
 
     fn read(&self, id: Self::Id) -> &Expense;
+}
+
+#[derive(Clone)]
+pub struct Cursor<'a>(Vec<&'a Expense>);
+
+impl<'a> Cursor<'a> {
+    pub fn iter(&'a self) -> impl Iterator<Item = &'a Expense> {
+        self.0.iter().map(|expense| *expense)
+    }
+
+    pub fn sum(self) -> Currency {
+        self.0.into_iter().map(|expense| expense.amount).sum()
+    }
 }
 
 type Id = slotmap::DefaultKey;
@@ -33,10 +45,9 @@ impl MemoryStore {
 
 impl<'a> Store<'a> for MemoryStore {
     type Id = Id;
-    type Cursor = Vec<&'a Expense>;
 
-    fn index(&'a self) -> Self::Cursor {
-        self.order.iter().map(|id| &self.expenses[*id]).collect()
+    fn index(&'a self) -> Cursor<'a> {
+        Cursor(self.order.iter().map(|id| &self.expenses[*id]).collect())
     }
 
     fn add(&mut self, expense: Expense) -> Self::Id {
