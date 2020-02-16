@@ -1,49 +1,59 @@
-use std::collections::HashMap;
-use std::marker::PhantomData;
-use uuid::Uuid;
+use slotmap::SlotMap;
 
 use crate::expense::Expense;
 
-pub trait Store {
-    type Id;
-    fn all(&self) -> Vec<&Expense>;
-    fn save(&mut self, expense: Expense) -> Self::Id;
-    fn read(&self, id: &Self::Id) -> Option<&Expense>;
+pub trait Store<'a> {
+    type Id: Copy;
+    type Cursor: IntoIterator<Item = &'a Expense>;
+
+    /// Returns an iterator over all stored `Expense`s
+    /// in reverse chronological order.
+    fn index(&'a self) -> Self::Cursor;
+
+    fn add(&mut self, expense: Expense) -> Self::Id;
+
+    fn read(&self, id: Self::Id) -> &Expense;
 }
 
-#[derive(PartialEq, Eq, Hash, Copy, Clone)]
-pub struct Id<Item>(Uuid, PhantomData<Item>);
-
-impl<Item> Id<Item> {
-    fn new() -> Id<Item> {
-        Id(Uuid::new_v4(), PhantomData)
-    }
-}
+type Id = slotmap::DefaultKey;
 
 pub struct MemoryStore {
-    events: HashMap<Id<Expense>, Expense>,
+    expenses: SlotMap<Id, Expense>,
+    order: Vec<Id>,
 }
 
 impl MemoryStore {
     pub fn empty() -> MemoryStore {
         MemoryStore {
-            events: HashMap::new(),
+            expenses: SlotMap::new(),
+            order: Vec::new(),
         }
     }
 }
 
-impl Store for MemoryStore {
-    type Id = Id<Expense>;
-    fn all(&self) -> Vec<&Expense> {
-        self.events.values().collect()
+impl<'a> Store<'a> for MemoryStore {
+    type Id = Id;
+    type Cursor = Vec<&'a Expense>;
+
+    fn index(&'a self) -> Self::Cursor {
+        self.order.iter().map(|id| &self.expenses[*id]).collect()
     }
-    fn save(&mut self, expense: Expense) -> Self::Id {
-        let id = Id::new();
-        self.events.insert(id, expense);
+
+    fn add(&mut self, expense: Expense) -> Self::Id {
+        let id = self.expenses.insert(expense);
+
+        // Insertion sort
+        let insertion_index = self
+            .order
+            .iter()
+            .position(|id| self.expenses[*id].date < expense.date)
+            .unwrap_or(0);
+        self.order.insert(insertion_index, id);
 
         id
     }
-    fn read(&self, id: &Self::Id) -> Option<&Expense> {
-        self.events.get(id)
+
+    fn read(&self, id: Self::Id) -> &Expense {
+        self.expenses.get(id).expect("Id was invalid.")
     }
 }
