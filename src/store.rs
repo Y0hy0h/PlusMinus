@@ -4,10 +4,9 @@ use crate::expense::{Currency, Expense};
 
 pub trait Store<'a, Item> {
     type Id;
+    type Filter;
 
-    /// Returns an iterator over all stored `Expense`s
-    /// in reverse chronological order.
-    fn index(&'a self) -> Cursor<'a, Self::Id, Item>;
+    fn index(&'a self, filter: Self::Filter) -> Cursor<'a, Self::Id, Item>;
 
     fn add(&mut self, item: Item) -> Self::Id;
 
@@ -51,9 +50,15 @@ impl<Item> MemoryStore<Item> {
 
 impl<'a, Item> Store<'a, Item> for MemoryStore<Item> {
     type Id = Id;
+    type Filter = Filter<Self::Id, Item>;
 
-    fn index(&'a self) -> Cursor<'a, Self::Id, Item> {
-        Cursor::new(self.items.iter().collect())
+    fn index(&'a self, filter: Self::Filter) -> Cursor<'a, Self::Id, Item> {
+        Cursor::new(
+            self.items
+                .iter()
+                .filter(|(id, item)| filter((id, item)))
+                .collect(),
+        )
     }
 
     fn add(&mut self, item: Item) -> Self::Id {
@@ -69,6 +74,8 @@ impl<'a, Item> Store<'a, Item> for MemoryStore<Item> {
         self.items.get(id).expect("Id was invalid")
     }
 }
+
+type Filter<Id, Item> = Box<dyn Fn((&Id, &Item)) -> bool>;
 
 pub struct OrderedStore<'a, Item, S>
 where
@@ -94,7 +101,8 @@ where
 
 impl<Id> StoreOrder for Expense<Id> {
     fn cmp(left: &Self, right: &Self) -> std::cmp::Ordering {
-        left.date.cmp(&right.date)
+        // Reverse chronological order
+        right.date.cmp(&left.date)
     }
 }
 
@@ -117,12 +125,20 @@ where
     Item: StoreOrder,
 {
     type Id = S::Id;
+    type Filter = Filter<Self::Id, Item>;
 
-    fn index(&'a self) -> Cursor<'a, Self::Id, Item> {
+    fn index(&'a self, filter: Self::Filter) -> Cursor<'a, Self::Id, Item> {
         Cursor::new(
             self.order
                 .iter()
-                .map(|id| (id, self.store.read(id)))
+                .filter_map(|id| {
+                    let item = self.store.read(id);
+                    if filter((&id, &item)) {
+                        Some((id, item))
+                    } else {
+                        None
+                    }
+                })
                 .collect(),
         )
     }
@@ -131,7 +147,9 @@ where
         let index = self
             .order
             .iter()
-            .position(|id| StoreOrder::cmp(self.store.read(id), &item) == std::cmp::Ordering::Less)
+            .position(|id| {
+                StoreOrder::cmp(self.store.read(id), &item) == std::cmp::Ordering::Greater
+            })
             .unwrap_or(0);
 
         let id = self.store.add(item);
